@@ -2,6 +2,12 @@
 
 An intelligent data cleaning application built with Google's Agent Development Kit (ADK) that uses specialized AI agents to automatically analyze, clean, and process CSV datasets.
 
+## 🎥 Demo Video
+
+[![AI-Powered Data Cleaning Pipeline Demo](https://img.youtube.com/vi/9Hfk6FJOVPw/0.jpg)](https://youtu.be/9Hfk6FJOVPw)
+
+[Watch the full demo on YouTube](https://youtu.be/9Hfk6FJOVPw)
+
 ## Overview
 
 This application leverages multiple AI agents working in sequence to provide comprehensive data cleaning capabilities. Each agent specializes in a specific aspect of data processing, creating an efficient and intelligent pipeline for data preparation tasks.
