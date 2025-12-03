@@ -23,26 +23,25 @@ This application leverages multiple AI agents working in sequence to provide com
 
 ## Architecture
 
-The application uses a distributed agent architecture with RemoteA2aAgent for inter-service communication:
+The application uses a distributed multi-agent architecture with public file servers:
 
-### 1. Data Pipeline Agent (Main Coordinator)
-- Orchestrates the complete data cleaning workflow
-- Analyzes CSV data structure and quality
-- Coordinates with remote cleaning service
-- Manages user approval workflow
+### 1. Local Agent (Port 8002)
+- Analyzes CSV data and saves to local file server
+- Creates public URLs for file access
+- Coordinates with remote cleaning agent
+- Serves files at `http://localhost:8002/files/`
 
-### 2. Remote Data Cleaning Agent (Port 8001)
-- Handles duplicate detection and removal
-- Implements intelligent missing value strategies
-- Processes critical columns (customer_id, product_id)
-- Uses statistical methods (median/mode) for non-critical columns
-- Applies 5% threshold rule for decision making
+### 2. Remote Cleaning Agent (Port 8001)
+- Downloads files via public URLs
+- Performs data cleaning (duplicates, missing values)
+- Saves cleaned files to remote file server
+- Serves cleaned files at `http://localhost:8001/files/`
 
-### 3. User Approval Workflow
-- Explains cleaning results to user
-- Asks for save confirmation
-- Saves to results directory if approved
-- Clears cache if declined
+### 3. Public File Server Architecture
+- Each agent has its own file server
+- Files are accessible via public URLs
+- No direct file path sharing between agents
+- Clean separation of concerns
 
 ## Technology Stack
 
@@ -60,15 +59,36 @@ The application uses a distributed agent architecture with RemoteA2aAgent for in
    ```
 3. Configure your Google API credentials in `.env` file
 
-## Usage
+## Running the Application
 
-The application processes CSV data through a coordinated pipeline:
+### Step 1: Start Remote Cleaning Agent
+```bash
+cd remote_agent
+python server.py
+```
+This starts the remote cleaning service on port 8001.
 
-1. **Data Analysis**: Analyzes CSV data quality and structure
-2. **Remote Cleaning**: Sends data to remote cleaning service (port 8001)
-3. **Results Explanation**: Shows cleaning summary and asks for approval
-4. **User Decision**: Save to results/ directory or clear cache
-5. **File Management**: Automatic cleanup of temporary files
+### Step 2: Start Local Agent
+```bash
+cd local_agent
+python agent.py
+```
+This starts the local agent service on port 8002.
+
+### Step 3: Start ADK Web Interface
+```bash
+# From the kaggle project root directory
+adk web
+```
+This starts the web interface to interact with the agents.
+
+## Usage Workflow
+
+1. **Upload CSV Data**: Provide CSV data through the web interface
+2. **Data Analysis**: Local agent analyzes and saves to file server
+3. **Remote Processing**: File URL sent to remote agent for cleaning
+4. **Results**: User receives cleaned file URL for download
+5. **File Access**: Both original and cleaned files available via public URLs
 
 ## Data Processing Logic
 
@@ -85,14 +105,14 @@ The application processes CSV data through a coordinated pipeline:
 
 ## Benefits
 
-- **Distributed Architecture**: RemoteA2aAgent enables service separation
-- **User Control**: Approval workflow before saving cleaned data
+- **Distributed Architecture**: Separate agents with public file servers
+- **Public File Access**: Files accessible via HTTP URLs
 - **Automated Processing**: Reduces manual data cleaning effort
-- **Consistent Results**: Standardized cleaning procedures
 - **Scalable**: Handles datasets of various sizes
 - **Intelligent**: Context-aware decision making
 - **Reliable**: Built-in error handling and validation
-- **Cache Management**: Automatic cleanup of temporary files
+- **Modular Design**: Easy to extend and customize
+- **Experiment-Friendly**: Public file servers for easy testing
 
 ## Use Cases
 
@@ -106,15 +126,23 @@ The application processes CSV data through a coordinated pipeline:
 
 ```
 kaggle/
-├── data_cleaner_agent/
-│   └── agent.py          # Main pipeline coordinator with RemoteA2aAgent
-├── preprocess_data_agent/
-│   └── server.py         # Remote cleaning service (port 8001)
-├── uploads/              # Temporary upload storage
-├── results/              # Final cleaned data output
+├── local_agent/
+│   ├── files/            # Local file server storage
+│   ├── .env              # Environment configuration
+│   └── agent.py          # Local agent (port 8002)
+├── remote_agent/
+│   ├── files/            # Remote file server storage
+│   ├── .env              # Environment configuration
+│   └── server.py         # Remote cleaning agent (port 8001)
 ├── requirements.txt      # Dependencies
 └── README.md            # This file
 ```
+
+## Public URLs
+
+- **Local Agent Files**: `http://localhost:8002/files/{filename}`
+- **Remote Agent Files**: `http://localhost:8001/files/{filename}`
+- **Web Interface**: Available after running `adk web`
 
 ## Contributing
 

@@ -19,25 +19,15 @@ retry_config = types.HttpRetryOptions(
     http_status_codes=[429, 500, 503, 504],
 )
 
-# File-based data transfer - kaggle project level
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(RESULTS_DIR, exist_ok=True)
+# Remote agent file server setup
+REMOTE_FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files")
+os.makedirs(REMOTE_FILES_DIR, exist_ok=True)
 
-print(f"PROJECT_ROOT: {PROJECT_ROOT}")
-
-# Logging setup
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def clean_data_temp(data, critical_columns=None):
-    """Clean data and save as temporary file"""
+def clean_data_temp(public_url, critical_columns=None):
+    """Clean data from public URL and save to remote file server"""
     try:
-        # Load data
-        df = pd.read_csv(StringIO(data))
+        # Load data from public URL
+        df = pd.read_csv(public_url)
         original_rows = len(df)
         
         # Remove duplicates
@@ -46,7 +36,7 @@ def clean_data_temp(data, critical_columns=None):
         
         # Handle missing values
         if critical_columns is None:
-            critical_columns = ['customer_id', 'product_id']
+            critical_columns = []
         
         actions_taken = []
         for column in df_clean.columns:
@@ -61,37 +51,36 @@ def clean_data_temp(data, critical_columns=None):
                 missing_percentage = (missing_count / len(df_clean)) * 100
                 if missing_percentage > 5:
                     if pd.api.types.is_numeric_dtype(df_clean[column]):
-                        df_clean[column].fillna(df_clean[column].median(), inplace=True)
+                        df_clean[column] = df_clean[column].fillna(df_clean[column].median())
                         method = "median"
                     else:
-                        df_clean[column].fillna(df_clean[column].mode()[0], inplace=True)
+                        df_clean[column] = df_clean[column].fillna(df_clean[column].mode()[0])
                         method = "mode"
                     actions_taken.append({"column": column, "action": "filled", "method": method, "count": int(missing_count)})
                 else:
                     df_clean = df_clean.dropna(subset=[column])
                     actions_taken.append({"column": column, "action": "removed_rows", "count": int(missing_count)})
         
-        # Save to temp location in results directory
+        # Save to remote file server
         import uuid
         file_id = str(uuid.uuid4())
-        temp_file = os.path.join(RESULTS_DIR, f"{file_id}_temp_cleaned.csv")
-        df_clean.to_csv(temp_file, index=False)
+        cleaned_filename = f"{file_id}_cleaned.csv"
+        cleaned_file_path = os.path.join(REMOTE_FILES_DIR, cleaned_filename)
+        df_clean.to_csv(cleaned_file_path, index=False)
         
-        # Also return cleaned data for pipeline
-        cleaned_data = df_clean.to_csv(index=False)
+        # Return public URL for remote file server
+        public_url = f"http://localhost:8001/files/{cleaned_filename}"
         
         return {
             "status": "success",
-            "temp_file": temp_file,
+            "public_url": public_url,
             "file_id": file_id,
-            "cleaned_data": cleaned_data,
             "summary": {
                 "original_rows": original_rows,
                 "final_rows": len(df_clean),
                 "duplicates_removed": duplicates_removed,
                 "actions_taken": actions_taken
-            },
-            "save_message": f"Temporary file saved: {temp_file}"
+            }
         }
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
@@ -101,16 +90,22 @@ data_cleaning_agent = Agent(
     name="data_cleaning_agent",
     model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     description="Data cleaning and temporary file storage",
-    instruction="""Clean CSV data and save as temporary file.
+    instruction="""When given a public_url parameter:
     
-    Use clean_data_temp(data, critical_columns) where:
-    - data: CSV string
-    - critical_columns: List like ['customer_id', 'product_id'] (optional)
+    1. Call clean_data_temp(public_url) to process the CSV file
+    2. Return the complete result including public_url and summary
     
-    This handles: duplicates → missing values → temp save.""",
+    The result will be sent back to the calling agent.""",
     tools=[clean_data_temp]
 )
 
 if __name__ == "__main__":
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+    
     app = to_a2a(data_cleaning_agent, port=8001)
+    
+    # Mount static file server for public access
+    app.mount("/files", StaticFiles(directory=REMOTE_FILES_DIR), name="files")
+    
     uvicorn.run(app, host="localhost", port=8001, log_level="info")
